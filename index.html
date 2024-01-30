@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaflet Measurement</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        #suggestions {
+            position: absolute;
+            background-color: #f1f1f1;
+            border: 1px solid #ccc;
+            max-height: 150px;
+            overflow-y: auto;
+            display: none;
+            width: 300px;
+        }
+
+        #suggestions a {
+            padding: 10px;
+            display: block;
+            text-decoration: none;
+            color: #333;
+        }
+
+        #suggestions a:hover {
+            background-color: #ddd;
+        }
+    </style>
+</head>
+<body>
+<div class="container" style="padding:5px">
+    <div class="row">
+        <div class="col-6 mt-5">
+            <label for="addressInput">Enter Address:</label>
+            <input type="text" id="addressInput" placeholder="Enter address..." oninput="searchAddress()">
+            <br/>
+            <!--<div id="results"></div>-->
+            <div id="suggestions"></div>
+            <br/>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Address</th>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Distance</th>
+                    </tr>
+                </thead>
+                <tbody class="distInfo">
+                    <!-- Table rows will be added dynamically here -->
+                </tbody>
+            </table>
+        </div>
+        <div class="col-6">
+            <div id="map" style="width:640px; height: 640px;"></div>
+        </div>
+    </div>
+</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js" integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        var distInfo = $('.distInfo');
+        var addressInput = $('#addressInput');
+        
+        var map = L.map('map').setView([-6.90596396,109.6758147,15], 15);
+      
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        var point1, point2, distanceInfo = [];
+        
+        map.on('click', function (e) {
+            if (!point1) {
+                point1 = e.latlng;
+                L.marker(point1).addTo(map);
+            } else if (!point2) {
+                point2 = e.latlng;
+                L.marker(point2).addTo(map);
+                
+                // Calculate the distance
+                var setDistance = point1.distanceTo(point2);
+                distanceInfo.push({
+                    address: addressInput.val(),
+                    from: point1,
+                    to: point2,
+                    distance: setDistance.toFixed(2)
+                });
+                
+                // Update the table with the new distance
+                updateDistanceTable();
+                
+                var polylineOptions = {
+                    color: 'red',
+                    weight: 6,
+                    opacity: 0.5
+                };
+
+                var popupContent = 'Distance: ' + setDistance.toFixed(2) + ' meters';
+                var polyline = new L.polyline([point1, point2], polylineOptions)
+                            .bindPopup(popupContent, {autoClose: false, autoPan: false}).openPopup()
+                            .addTo(map);
+
+                // Reset points for the next measurement
+                point1 = null;
+                point2 = null;
+            }
+        });
+        
+        function searchAddress() {
+            var addressInput = document.getElementById('addressInput').value;
+            var apiUrl = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(addressInput);
+
+            // Perform the API request
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => displaySuggestions(data))
+                .catch(error => console.error('Error fetching data:', error));
+        }
+        
+        function displaySuggestions(data) {
+            var suggestionsDiv = document.getElementById('suggestions');
+            suggestionsDiv.innerHTML = ''; // Clear previous suggestions
+
+            if (data.length === 0) {
+                suggestionsDiv.style.display = 'none';
+                return;
+            }
+
+            // Display each suggestion
+            data.forEach(result => {
+                var suggestionLink = document.createElement('a');
+                suggestionLink.href = '#';
+                suggestionLink.textContent = result.display_name;
+                suggestionLink.onclick = function() {
+                    map.setView([result.lat, result.lon], 10);
+                    // Clear the input field and hide suggestions
+                    document.getElementById('addressInput').value = result.display_name;
+                    suggestionsDiv.style.display = 'none';
+                    return false; // Prevent the page from navigating
+                };
+
+                suggestionsDiv.appendChild(suggestionLink);
+            });
+
+            suggestionsDiv.style.display = 'block';
+        }
+
+        /*function displayResults(data) {
+            var resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = ''; // Clear previous results
+
+            if (data.length === 0) {
+                resultsDiv.innerHTML = 'No results found.';
+                return;
+            }
+
+            // Display each result
+            data.forEach(result => {
+                var resultDiv = document.createElement('div');
+                resultDiv.innerHTML = '<strong>' + result.display_name + '</strong><br>' +
+                                     'Latitude: ' + result.lat + '<br>' +
+                                     'Longitude: ' + result.lon + '<br>';
+                resultsDiv.appendChild(resultDiv);
+            });
+        }*/
+
+        function updateDistanceTable() {
+            // Clear existing rows
+            distInfo.empty();
+            
+            // Add new rows for each distance
+            for (var i = 0; i < distanceInfo.length; i++) {
+                var newRow = '<tr><td>' + (i + 1) + '</td><td>' + distanceInfo[i].address + '</td><td>' + distanceInfo[i].from + '</td><td>' + distanceInfo[i].to + '</td><td>' + distanceInfo[i].distance + ' meters</td></tr>';
+                distInfo.append(newRow);
+            }
+        }
+    </script>
+</body>
+</html>
